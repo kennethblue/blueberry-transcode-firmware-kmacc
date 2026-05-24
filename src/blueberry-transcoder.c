@@ -305,4 +305,64 @@ bool isBbBlockInvalid(BbBlock b){
 	return b == BB_INVALID_BLOCK;
 }
 
+/**
+ * gets a 64-bit unsigned integer in the specified block
+ * @param buf the buffer to read
+ * @param block the block offset in bytes
+ * @param i the index offset in bytes
+ * @return the value
+ */
+uint64_t getBbUint64(Bb* buf, BbBlock block, uint16_t i){
+	uint64_t result;
+	uint8_t* bs = (uint8_t*)&result;
+	bs[0] = getBbUint8(buf, block, i);
+	bs[1] = getBbUint8(buf, block, i+1);
+	bs[2] = getBbUint8(buf, block, i+2);
+	bs[3] = getBbUint8(buf, block, i+3);
+	bs[4] = getBbUint8(buf, block, i+4);
+	bs[5] = getBbUint8(buf, block, i+5);
+	bs[6] = getBbUint8(buf, block, i+6);
+	bs[7] = getBbUint8(buf, block, i+7);
+	return result;
+}
+/**
+ * sets a 64-bit unsigned integer in the specified block
+ * @param buf the buffer to read
+ * @param block the block offset in bytes
+ * @param i the index offset in bytes
+ * @param the value
+ */
+void setBbUint64(Bb* buf, BbBlock block, uint16_t i, uint64_t v){
+	uint8_t* bs = (uint8_t*)&v;
+	setBbUint8(buf, block, i,   bs[0]);
+	setBbUint8(buf, block, i+1, bs[1]);
+	setBbUint8(buf, block, i+2, bs[2]);
+	setBbUint8(buf, block, i+3, bs[3]);
+	setBbUint8(buf, block, i+4, bs[4]);
+	setBbUint8(buf, block, i+5, bs[5]);
+	setBbUint8(buf, block, i+6, bs[6]);
+	setBbUint8(buf, block, i+7, bs[7]);
+}
+/**
+ * gets a 64-bit signed integer in the specified block
+ * @param buf the buffer to read
+ * @param block the block offset in bytes
+ * @param i the index offset in bytes
+ * @return the value
+ */
+int64_t getBbInt64(Bb* buf, BbBlock block, uint16_t i){
+	uint64_t ip = getBbUint64(buf, block, i);
+	int64_t* result = (int64_t*)(&ip);
+	return *result;
+}
+/**
+ * sets a 64-bit signed integer in the specified block
+ *  @param buf the buffer to read
+ *  @param block the block offset in bytes
+ *  @param i the index offset in bytes
+ *  @param the value
+ */
+void setBbInt64(Bb* buf, BbBlock block, uint16_t i, int64_t v){
+	setBbUint64(buf, block, i, (uint64_t)v);
+}
 

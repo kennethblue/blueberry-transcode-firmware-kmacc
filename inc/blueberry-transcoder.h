@@ -167,6 +167,23 @@ uint16_t computeCrc(Bb* buf, BbBlock start, BbBlock end);
  */
 bool isBbIndexValid(BbBlock b);
 
+/**
+ * gets a 64-bit unsigned integer in the specified block
+ */
+uint64_t getBbUint64(Bb* buf, BbBlock p, uint16_t i);
+/**
+ * sets a 64-bit unsigned integer in the specified block
+ */
+void setBbUint64(Bb* buf, BbBlock p, uint16_t i, uint64_t v);
+/**
+ * gets a 64-bit signed integer in the specified block
+ */
+int64_t getBbInt64(Bb* buf, BbBlock p, uint16_t i);
+/**
+ * sets a 64-bit signed integer in the specified block
+ */
+void setBbInt64(Bb* buf, BbBlock p, uint16_t i, int64_t v);
+
 //*******************************************************************************************
 //Code
 //*******************************************************************************************
