@@ -157,10 +157,7 @@ void setBbBool(Bb* buf, BbBlock p, uint16_t i, uint32_t bitNum, bool v);
  * @return the wrapped index
  */
 uint32_t bbWrap(Bb* buf, int i);
-/**
- * computes the crc of the buffer from it's start up to the specified block
- */
-uint16_t computeCrc(Bb* buf, BbBlock start, BbBlock end);
+
 
 /**
  * tests if the specified index is not equal to the invalid value 0xffffffff

@@ -27,12 +27,7 @@ THE SOFTWARE.
 #include <blueberry-receiver.h>
 #include <blueberry-transcoder.h>
 #include <blueberry-parser.h>
-#include <ethernet.h>
 
-#include <stddef.h>
-
-#include <timeSync.h>
-//#include <fastcodeUtil.h>
 
 //*******************************************************************************************
 //Defines
@@ -48,11 +43,24 @@ THE SOFTWARE.
 //Variables
 //*******************************************************************************************
 
-static uint32_t m_lastRxTime = 0;
+
 
 //*******************************************************************************************
 //Function Prototypes
 //*******************************************************************************************
+
+
+/**
+ * Receive one bytes from the queue.
+ * If the queue has less than n bytes available, then only use what is available.
+ * This is intended for use with a UART
+ * This functi0n will test the CRC
+ * @param s - state for this routine to allow for multiple calls
+ * @param q - the queue that the new bytes are coming from
+ * @param n - the maximum number of bytes to process - this is to limit the type that this routine will take at one calling
+ *
+ */
+static BbResult blueberryReceiveByte(Bb* bb);
 
 /**
  * Decodes a packet from the start of a buffer, assuming it is all there
@@ -63,24 +71,13 @@ static uint32_t m_lastRxTime = 0;
  * @param buf - the buffer for this packet, also the state of the receive routine
  * @return true if a valid packet was received
  */
-static bool blueberryReceivePacket(Bb* buf);
-/**
- * Receive n bytes from the queue.
- * If the queue has less than n bytes available, then only use what is available.
- * This is intended for use with a UART
- * This functi0n will test the CRC
- * @param s - state for this routine to allow for multiple calls
- * @param q - the queue that the new bytes are coming from
- * @param n - the maximum number of bytes to process - this is to limit the type that this routine will take at one calling
- *
- */
-static bool blueberryReceive(Bb* bb, ByteQ* q, uint32_t n);
+static BbResult blueberryReceivePacket(Bb* buf);
 //*******************************************************************************************
 //Code
 //*******************************************************************************************
 
 /**
- * Receive n bytes from the queue.
+ * Receive one bytes from the queue.
  * If the queue has less than n bytes available, then only use what is available.
  * This is intended for use with a UART
  * This function will test the CRC
@@ -93,47 +90,26 @@ static bool blueberryReceive(Bb* bb, ByteQ* q, uint32_t n);
  * @return true if a valid packet was received
  *
  */
-static bool blueberryReceive(Bb* buf, ByteQ* q, uint32_t n){
-	bool result = false;
-	bool fail = false;
-	if( buf->length == 0){
-		buf->buffer = q->buffer;
-		buf->bufferLength = q->bufferSize;
-		buf->start = q->front;
-		buf->time = getLocalTimeMillis();
-	}
-	//figure out how many bytes to receive
-	//note that any new bytes will be the difference between the size of bb and the amount on the queue
-	uint32_t m = getBytesUsed(q) - buf->length;
-	if(m > n){
-		m = n;
-	}
+static BbResult blueberryReceiveByte(Bb* buf){
+	BbResult result = BB_INCOMPLETE;
 
-	//cycle through all the bytes so far
-	for(uint32_t i = 0; i < m; ++i){
+	++(buf->length);
 
-		++(buf->length);
-
-		if(!minBbLengthCheck(buf)){
-			if(!checkBbPreamble(buf)){
-				fail = true;
-			}
-		} else if(checkBbLength(buf)){
-			if(checkBbCrc(buf)){
-				result = true;//we have a valid packet
-				break;
-				//any remaining bytes should be checked after this packet has been consumed
-			} else {
-				fail = true;
-			}
+	if(!minBbLengthCheck(buf)){
+		if(!checkBbPreamble(buf)){
+			result = BB_FAIL;
 		}
-
-		if(fail){
-			discardFromByteQ(q, buf->length);
-			buf->length = 0;
-			buf->start = q->front;
+	} else if(checkBbLength(buf)){
+		if(checkBbCrc(buf)){
+			result = BB_GOOD;//we have a valid packet
+			//any remaining bytes should be checked after this packet has been consumed
+		} else {
+			result = BB_FAIL;
 		}
 	}
+
+
+
 	return result;
 }
 
@@ -146,151 +122,59 @@ static bool blueberryReceive(Bb* buf, ByteQ* q, uint32_t n){
  * @param buf - the buffer for this packet, also the state of the receive routine
  * @return true if a valid packet was received
  */
-static bool blueberryReceivePacket(Bb* buf){
-	bool result = false;
+static BbResult blueberryReceivePacket(Bb* buf){
+	BbResult result = BB_FAIL;
 
 	if(minBbLengthCheck(buf)){
 		if(checkBbPreamble(buf)){
 			if(checkBbLength(buf)){
-				result = true;
+				result = BB_GOOD;
 			}
 		}
 	}
 
-	if(!result){
-		buf->length = 0;
-	}
+
 
 	return result;
 
 
 }
+
+
 /**
- * Free up data from the byte queue and prep the state
- * @param bb - the buffer containing the packet
- * @param q - the queue that the packet was received into, if there was one. Set to NULL if not applicable
+ * Decodes a packet from the start of a buffer, assuming it is all there
+ * This is indended for use with ethernet
+ * This function will not test the CRC
+ * @param buf - the buffer for this packet, also the state of the receive routine
+ * @return BB_GOOD if valid packet else BB_FAIL
  */
-static void blueberryReceiveDone(Bb* bb, ByteQ* q){
-	if(q != NULL){
-		discardFromByteQ(q, bb->length);
-	}
-	bb->time = 0;
-	bb->length = 0;//this indicates that the state is reset
-	bb->start = 0;//don't really need to do this
+BbResult blueberryReceiveAndParsePacket(Bb* bb){
+	BbResult result = blueberryReceivePacket(bb);
+	if(result == BB_GOOD){
+		parseBbPacket(bb);
 
-
-}
-/**
- * scans the input queue for packets, if found will respond with a response packet on the output queue.
- * this funcion will only process at most n bytes at a time
- * It uses the input buffer to store the recieving state between calls.
- *
- * @param inP - a packet used for receiving. This should be static
- * @param inQ - the queue that the bytes
- * @param outQ - the queue that a response packet will be sent on
- * @param n - the maximum number of bytes to process in one run of this function - if 0 then assumes the whole packet is in the inQ
- */
-bool transceiveBrPacketN(Bb* inP, ByteQ* inQ, ByteQ* outQ, uint32_t n){
-	bool result = false;
-	while(isByteQNotEmpty(inQ)){
-		if(blueberryReceive(inP, inQ, n)){
-			parseBbPacket(inP);
-			blueberryReceiveDone(inP, inQ);
-			result = true;
-		}
-	}
-
-	if(result){
-		Bb op;
-		Bb* outP = &op;
-		outP->buffer = outQ->buffer;
-		outP->bufferLength = outQ->bufferSize;
-		outP->start = outQ->back;
-		outP->length = 0;
-
-		makeBbPacketWithQueuedMessages(outP);
-		advanceByteQBack(outQ, outP->length);
 	}
 	return result;
 }
 
-
-/**
- * A function to process a UDP packet as a blueberry packet
- * This matches the function signature of @see UdpPacketProcessor
- * @param sourceMac - the mac address of the source of the received packet
- * @param sourceIp - the IP address of the source device
- * @param sourcePort - the port that this packet was sent from
- * @param destIp - the IP address that this packet was sent to - this will either be this device's IP address or a broadcast address
- * @param destPort - the port that this packet was sent to. This will be the blueberry port no doubt
- * @param data - the data payload of the packet
- * @param dataLength - the number of bytes of the packet
- */
-bool processBlueberryPacket(uint8_t sourceMac[6], uint32_t sourceIp, uint16_t sourcePort, uint32_t destIp, uint16_t destPort, uint8_t* data, uint32_t dataLength){//EthernetPacket* ep,  Ipv4Packet* ip, UdpPacket* inUp){
-
-//	EthernetPacket* nep = makeNewEthernetPacket(sourceMac, ETHERTYPE_IPV4);
-//	Ipv4Packet* ni4p = addIpv4Packet(nep, sourceIp, IP_PROT_UDP);
-//	UdpPacket* outUp = addUdpPacket(ni4p, BR_PORT, BR_PORT);
-	uint32_t maxSize = 0;
-	uint8_t* outData = NULL;
-	outData = startUdpPacket(sourceMac, sourceIp, sourcePort, BB_UDP_PORT, &maxSize);
-	//this is where the BR packet data will be processed
-
-
-
-	Bb inB;
-	Bb outB;
-
-	Bb* inP = &inB;
-	Bb* outP = &outB;
-
-
-	//if the recevied packet was not sent to a broadcast IP then record the time
-	if((destIp & 0xff) !=  0xff){
-		m_lastRxTime = getTimeInMicroSeconds();
+BbResult blueberryReceiveAndParseByte(Bb* bb){
+	BbResult result = blueberryReceiveByte(bb);
+	if(result == BB_GOOD){
+		parseBbPacket(bb);
 	}
 
-	inP->buffer = data;
-	inP->length = dataLength;
-	inP->bufferLength = dataLength;
-	inP->start = 0;
-	inP->time = getLocalTimeMillis();
-
-	outP->buffer = outData;
-	outP->length = 0;
-	outP->bufferLength = maxSize;
-	outP->start = 0;
-	outP->time = getLocalTimeMillis();
-
-	bool result = false;
-	if(blueberryReceivePacket(inP)){
-		parseBbPacket(inP);
-		blueberryReceiveDone(inP, NULL);
-		result = true;
-	}
-	if(result){
-		makeBbPacketWithQueuedMessages(outP);
-
-	}
-	if(outP->length > 0){
-//		finishUdpPacket(outUp, nlen);
-//		nlen += sizeof(UdpPacket);
-//		finishIpv4Packet(ni4p, nlen);
-//		nlen += sizeof(Ipv4Packet);
-//		finishAndSendEthernetPacket(nep, nlen);
-		completeUdpPacket(outData, outP->length, false);
-
-
-	}
 	return result;
+}
 
-}
-/**
- * Checks if we've recevied a packet within the specified time. Specifically checks to see if we HAVEN'T
- * @param microseconds - the specified timeout
- * @return true if time since last received packet is greater than the specified time
- */
-bool isLastPacketTimeNotWithin(uint32_t microseconds){
-	return slowTimer(&m_lastRxTime, microseconds);
-}
+
+
+
+///**
+// * Checks if we've recevied a packet within the specified time. Specifically checks to see if we HAVEN'T
+// * @param microseconds - the specified timeout
+// * @return true if time since last received packet is greater than the specified time
+// */
+//bool isLastPacketTimeNotWithin(uint32_t microseconds){
+//	return slowTimer(&m_lastRxTime, microseconds);
+//}
 
