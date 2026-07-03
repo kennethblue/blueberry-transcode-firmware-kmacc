@@ -89,7 +89,6 @@ static void registerProcessor(Processors * ps, uint32_t key, BbProcessor p);
 void initBbParser(void){
 	m_parsers.num = 0;
 	m_builders.num = 0;
-
 }
 
 /**
@@ -113,8 +112,6 @@ void parseBbPacket(Bb* buf){
 		if(isBbMessageEmpty(buf, msg)){
 
 		} else {
-
-
 			uint32_t i;
 			BbProcessor p = lookup(&m_parsers, k, &i);
 			if(p != NULL){
@@ -122,9 +119,7 @@ void parseBbPacket(Bb* buf){
 				(*p)(buf, msg);
 			}
 		}
-
 		msg += len;
-
 	}
 }
 /**
@@ -135,7 +130,6 @@ void queueBbMessage(uint32_t key){
 	if(m_rxIndex < MSG_Q_SIZE){
 		m_rxMsgs[m_rxIndex] = key;
 		++m_rxIndex;
-
 	}
 
 }
@@ -250,8 +244,6 @@ bool checkBbPreamble(Bb* bb){
 	for(uint32_t j = 0; j < n; ++j){
 		a |= ((uint32_t)getBbUint8(bb, 0, PACKET_PREAMBLE_INDEX + j)) << (j*8);
 	}
-
-
 	return (a ^ b) == 0;
 }
 /**
@@ -345,9 +337,6 @@ void makeBbPacketWithQueuedMessages(Bb* bb, bool doCrc){
 	} else {
 		undoBbPacketStart(bb);
 	}
-
-
-
 }
 
 /**
@@ -379,7 +368,7 @@ uint16_t __attribute__((weak)) computeBbCrc(Bb* buf, BbBlock block, BbBlock end)
 	uint16_t crc = 0xffff;
 	uint16_t x;
 	uint16_t d;
-	for(uint16_t i = block; i < end; ++i){
+	for(BbBlock i = block; i < end; ++i){
 		d = (uint16_t)getBbUint8(buf, i, 0);
 		x = ((crc>>8) ^ d) & 0xff;
 		x ^= x>>4;

@@ -197,7 +197,6 @@ int32_t getBbInt32(Bb* buf, BbBlock p, uint16_t i){
  */
 void setBbInt32(Bb* buf, BbBlock block, uint16_t i, int32_t v){
 	setBbUint32(buf, block, i, (uint32_t)v);
-
 }
 
 /**
