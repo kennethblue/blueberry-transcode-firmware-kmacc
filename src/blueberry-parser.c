@@ -107,6 +107,13 @@ void parseBbPacket(Bb* buf){
 		//we have enough data for a message
 		uint32_t k = getBbMessageKey(buf, msg);
 		uint32_t len = getBbMessageLength(buf, msg);
+
+		if(len == 0){
+			//if there's a message with a length of zero then we would get stuck
+			//unfortunately we have to bail on the rest of the packet
+			//we certainly don't want to process this malformed message, and there's no way to progress to any following messages
+			break;
+		}
 		//record in the queue that the particular type of message was received
 		queueBbMessage(k);
 		if(isBbMessageEmpty(buf, msg)){
