@@ -102,7 +102,7 @@ void parseBbPacket(Bb* buf){
 		return;
 	}
 	BbBlock msg = PACKET_FIRST_MESSAGE_INDEX;
-	m_rxIndex = 0;
+
 	while(msg < packetLength){
 		//we have enough data for a message
 		uint32_t k = getBbMessageKey(buf, msg);
@@ -339,6 +339,7 @@ void makeBbPacketWithQueuedMessages(Bb* bb, bool doCrc){
 
 
 	}
+	m_rxIndex = 0;
 	if(started && bb->length > PACKET_FIRST_MESSAGE_INDEX){
 		finishBbPacket(bb, doCrc);
 	} else {
