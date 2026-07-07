@@ -106,8 +106,11 @@ void undoBbPacketStart(Bb* bb);
  * Finalize the packet in preparation for sending
  * This relies on the buffer having the final length set correctly
  * And all messages construted correctly
+ * @param bb - the buffer that the packet has been constructed in
+ * @param doCrc - will compute a CRC for the packet if true, otherwise not
+
  */
-void finishBbPacket(Bb* bb);
+void finishBbPacket(Bb* bb, bool doCrc);
 
 /**
  * checks if a potential packet has at least enough bytes received to contain a packet header
@@ -128,9 +131,10 @@ void queueBbMessage(uint32_t key);
  * Make a packet in the specified buffer that contains all queued messages
  * Note that a packet may not be fully completed, in which case the buffer will still have a length of zero
  * @param bb - the buffer to make the packet in
+ * @param doCrc - will compute a CRC for the packet if true, otherwise not
 
  */
-void makeBbPacketWithQueuedMessages(Bb* bb);
+void makeBbPacketWithQueuedMessages(Bb* bb, bool doCrc);
 
 /**
  * takes the specified value and rounds it up to the nearest multiple of 4
@@ -145,6 +149,22 @@ BbBlock bbAlign(uint16_t i);
  * @return true if time since last received packet is greater than the specified time
  */
 bool isLastPacketTimeNotWithin(uint32_t microseconds);
+
+
+//*******************************************************************************************
+//Weak Function Prototypes
+//!!!!!!! These should be over-ridden for better performance !!!!!!!!!!!!
+//*******************************************************************************************
+
+/**
+ * computes the  CRC-16-CCITT of the buffer.
+ * This function has a weak implementation and probably should be re-implemented with hardware specific code
+ * Assumes the buffer contains a packet and the packet will be a multiple of 4-bytes long
+ * @param buf - the buffer containing the packet
+ * @param block - the location of the first message. This is the index of the first byte after the packet header.
+ * @param end - one past the last element
+ */
+uint16_t computeBbCrc(Bb* buf, BbBlock block, BbBlock end);
 
 //*******************************************************************************************
 //Code

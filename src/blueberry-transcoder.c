@@ -26,7 +26,7 @@ THE SOFTWARE.
 //*******************************************************************************************
 #include <blueberry-transcoder.h>
 
-#include <crc1021.h>
+
 //*******************************************************************************************
 //Defines
 //*******************************************************************************************
@@ -197,7 +197,6 @@ int32_t getBbInt32(Bb* buf, BbBlock p, uint16_t i){
  */
 void setBbInt32(Bb* buf, BbBlock block, uint16_t i, int32_t v){
 	setBbUint32(buf, block, i, (uint32_t)v);
-
 }
 
 /**
@@ -276,27 +275,7 @@ uint32_t bbWrap(Bb* buf, int i){
 	}
 	return j;
 }
-/**
- * computes the crc of the buffer
- * @param buf the buffer
- * @param block the first element
- * @param one past the last element
- */
-uint16_t computeCrc(Bb* buf, BbBlock block, BbBlock end){
 
-	uint16_t crc;
-	resetCrc1021P(&crc);
-	for(uint16_t i = block; i < end; i += 4){
-		uint32_t w = getBbUint32(buf, i, 0);
-
-		crc1021P32(&crc, w);
-//		getCrc1021P(&crc);
-	}
-
-	//do from the start to either the buffer end or the block end
-	getCrc1021P(&crc);
-	return crc;
-}
 
 /**
  * tests if the specified index is not equal to the invalid value 0xffffffff

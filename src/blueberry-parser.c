@@ -30,7 +30,7 @@ THE SOFTWARE.
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <queue.h>
+
 
 //*******************************************************************************************
 //Defines
@@ -67,9 +67,8 @@ typedef struct {
 //*******************************************************************************************
 static Processors m_parsers;
 static Processors m_builders;
-static uint32_t m_rxQ[MSG_Q_SIZE];
-static uint32_t m_rxQFront = 0;
-static uint32_t m_rxQBack = 0;
+static uint32_t m_rxMsgs[MSG_Q_SIZE];
+static uint32_t m_rxIndex = 0;
 //*******************************************************************************************
 //Function Prototypes
 //*******************************************************************************************
@@ -90,8 +89,6 @@ static void registerProcessor(Processors * ps, uint32_t key, BbProcessor p);
 void initBbParser(void){
 	m_parsers.num = 0;
 	m_builders.num = 0;
-	registerUdpListener(BB_UDP_PORT, processBlueberryPacket, false);
-	setEthernetPort(BB_UDP_PORT, BB_UDP_PORT);
 }
 
 /**
@@ -110,13 +107,18 @@ void parseBbPacket(Bb* buf){
 		//we have enough data for a message
 		uint32_t k = getBbMessageKey(buf, msg);
 		uint32_t len = getBbMessageLength(buf, msg);
+
+		if(len == 0){
+			//if there's a message with a length of zero then we would get stuck
+			//unfortunately we have to bail on the rest of the packet
+			//we certainly don't want to process this malformed message, and there's no way to progress to any following messages
+			break;
+		}
 		//record in the queue that the particular type of message was received
 		queueBbMessage(k);
 		if(isBbMessageEmpty(buf, msg)){
 
 		} else {
-
-
 			uint32_t i;
 			BbProcessor p = lookup(&m_parsers, k, &i);
 			if(p != NULL){
@@ -124,9 +126,7 @@ void parseBbPacket(Bb* buf){
 				(*p)(buf, msg);
 			}
 		}
-
 		msg += len;
-
 	}
 }
 /**
@@ -134,8 +134,11 @@ void parseBbPacket(Bb* buf){
  * @param key - the module/message key for the desired message
  */
 void queueBbMessage(uint32_t key){
-	m_rxQ[m_rxQBack] = key;
-	justAddedToQueueBack(&m_rxQFront, &m_rxQBack, MSG_Q_SIZE);
+	if(m_rxIndex < MSG_Q_SIZE){
+		m_rxMsgs[m_rxIndex] = key;
+		++m_rxIndex;
+	}
+
 }
 
 
@@ -248,8 +251,6 @@ bool checkBbPreamble(Bb* bb){
 	for(uint32_t j = 0; j < n; ++j){
 		a |= ((uint32_t)getBbUint8(bb, 0, PACKET_PREAMBLE_INDEX + j)) << (j*8);
 	}
-
-
 	return (a ^ b) == 0;
 }
 /**
@@ -267,7 +268,7 @@ bool checkBbLength(Bb* bb){
 bool checkBbCrc(Bb* bb){
 	uint32_t n = bb->length;
 	uint16_t crcA = (uint16_t)getBbUint16(bb, 0, PACKET_CRC_INDEX);
-	uint16_t crcB = computeCrc(bb, PACKET_FIRST_MESSAGE_INDEX, n);
+	uint16_t crcB = computeBbCrc(bb, PACKET_FIRST_MESSAGE_INDEX, n);
 	return crcA == crcB;
 }
 
@@ -292,12 +293,14 @@ void undoBbPacketStart(Bb* bb){
  * Finalize the packet in preparation for sending
  * This relies on the buffer having the final length set correctly
  * And all messages construted correctly
+ * @param bb - the buffer that the packet has been constructed in
+ * @param doCrc - will compute a CRC for the packet if true, otherwise not
+
  */
-void finishBbPacket(Bb* bb){
+void finishBbPacket(Bb* bb, bool doCrc){
 	uint32_t n = bbAlign(bb->length);
-//	setBbUint32(bb, 0, 0, PACKET_PREAMBLE);
 	setBbUint16(bb, 0, PACKET_LENGTH_INDEX, (uint16_t)(n/4));
-	uint16_t crc = computeCrc(bb, PACKET_FIRST_MESSAGE_INDEX, n);
+	uint16_t crc = doCrc ? computeBbCrc(bb, PACKET_FIRST_MESSAGE_INDEX, n) : 0xffff;
 	setBbUint16(bb, 0, PACKET_CRC_INDEX, crc);
 }
 
@@ -305,24 +308,24 @@ void finishBbPacket(Bb* bb){
  * indicates that messages were received and should trigger a corresponding packet of messages to be sent
  */
 bool isBbPacketRequested(){
-	return isQueueNotEmpty(&m_rxQFront, &m_rxQBack, MSG_Q_SIZE);
+	return m_rxIndex > 0;
 }
 
 /**
  * Make a packet in the specified buffer that contains all queued messages
  * Note that a packet may not be fully completed, in which case the buffer will still have a length of zero
  * @param bb - the buffer to make the packet in
+ * @param doCrc - will compute a CRC for the packet if true, otherwise not
 
  */
-void makeBbPacketWithQueuedMessages(Bb* bb){
+void makeBbPacketWithQueuedMessages(Bb* bb, bool doCrc){
 	bool started = false;
 	BbBlock msg = PACKET_FIRST_MESSAGE_INDEX;
 
-	while(isQueueNotEmpty(&m_rxQFront, &m_rxQBack, MSG_Q_SIZE)){
-		uint32_t key = m_rxQ[m_rxQFront];
-		doneWithQueueFront(&m_rxQFront, &m_rxQBack, MSG_Q_SIZE);
-		uint32_t i = 0;
-		BbProcessor p = lookup(&m_builders, key, &i);
+	for(uint32_t i = 0; i < m_rxIndex; ++i){
+		uint32_t key = m_rxMsgs[i];
+		uint32_t pi = 0;
+		BbProcessor p = lookup(&m_builders, key, &pi);
 		if(p != NULL){
 			if(!started){
 				startBbPacket(bb);
@@ -336,14 +339,12 @@ void makeBbPacketWithQueuedMessages(Bb* bb){
 
 
 	}
+	m_rxIndex = 0;
 	if(started && bb->length > PACKET_FIRST_MESSAGE_INDEX){
-		finishBbPacket(bb);
+		finishBbPacket(bb, doCrc);
 	} else {
 		undoBbPacketStart(bb);
 	}
-
-
-
 }
 
 /**
@@ -362,7 +363,28 @@ BbBlock bbAlign(uint16_t i){
 }
 
 
+/**
+ * computes the  CRC-16-CCITT of the buffer.
+ * This function has a weak implementation and probably should be re-implemented with hardware specific code
+ * Assumes the buffer contains a packet and the packet will be a multiple of 4-bytes long
+ * @param buf - the buffer containing the packet
+ * @param block - the location of the first message. This is the index of the first byte after the packet header.
+ * @param end - one past the last element
+ */
+uint16_t __attribute__((weak)) computeBbCrc(Bb* buf, BbBlock block, BbBlock end){
 
+	uint16_t crc = 0xffff;
+	uint16_t x;
+	uint16_t d;
+	for(BbBlock i = block; i < end; ++i){
+		d = (uint16_t)getBbUint8(buf, i, 0);
+		x = ((crc>>8) ^ d) & 0xff;
+		x ^= x>>4;
+		crc = (crc << 8) ^ (x << 12) ^ (x <<5) ^ x;
+	}
+
+	return crc;
+}
 
 
 
